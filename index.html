@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes"><title>SPLIT FIRE ONLINE</title>
+<title>SPLIT FIRE ONLINE</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;user-select:none;touch-action:none;}
@@ -519,37 +519,85 @@ function addStairs(x,z,steps,stepW,stepD,stepH,dir,col){
   }
 }
 
-// 屋根付きの建物（壁＋床＋屋根、内部に入って2階に上がれる）
-// floorY: 1階の床の高さ（通常0）, wallH: 壁の高さ, hasUpstairs: 2階の床を追加するか
+// 1枚の壁を「窓付き」で生成するヘルパー。
+// 壁の中央に窓の開口部(幅windowW, 壁の上下に余白)を空け、開口部にはガラス板（見た目のみ、当たり判定なし）を配置。
+// これにより銃弾・レイキャストが窓を通過でき、「窓から撃てる」「窓越しに撃たれる」が実現する。
+function addWindowedWall(w,h,d,x,y,z,wallCol,axis,windowW,windowH,windowY){
+  // axis: 'x' = 壁がX方向に伸びる(幅w,厚みd)、'z' = 壁がZ方向に伸びる(厚みw,奥行d)
+  if(!windowW||w<windowW+0.6){
+    // 窓を入れるスペースが無ければ通常の壁
+    addBox(w,h,d,x,y,z,wallCol);
+    return;
+  }
+  const sideW=(w-windowW)/2;
+  const winBottom=windowY-windowH/2;
+  const winTop=windowY+windowH/2;
+  const wallBottom=y-h/2;
+  const wallTop=y+h/2;
+
+  if(axis==='x'){
+    // 壁は X方向に幅w、Z方向に厚みd。窓は壁の中央(X方向)に開ける。
+    addBox(sideW,h,d,x-(w-sideW)/2,y,z,wallCol); // 左側の壁
+    addBox(sideW,h,d,x+(w-sideW)/2,y,z,wallCol); // 右側の壁
+    // 窓の上の壁（まぐさ）
+    if(winTop<wallTop) addBox(windowW,wallTop-winTop,d,x,(winTop+wallTop)/2,z,wallCol);
+    // 窓の下の壁（腰壁）
+    if(winBottom>wallBottom) addBox(windowW,winBottom-wallBottom,d,x,(wallBottom+winBottom)/2,z,wallCol);
+    // ガラス（見た目のみ、当たり判定なし＝弾が通過する）
+    const glass=new THREE.Mesh(new THREE.PlaneGeometry(windowW,windowH),
+      new THREE.MeshBasicMaterial({color:0xaaddff,transparent:true,opacity:.25,side:THREE.DoubleSide}));
+    glass.position.set(x,windowY,z);
+    addS(glass);
+  } else {
+    // 壁は Z方向に奥行d、X方向に厚みw。窓は壁の中央(Z方向)に開ける。
+    addBox(w,h,sideW,x,y,z-(d-sideW)/2,wallCol);
+    addBox(w,h,sideW,x,y,z+(d-sideW)/2,wallCol);
+    if(winTop<wallTop) addBox(w,wallTop-winTop,windowW,x,(winTop+wallTop)/2,z,wallCol);
+    if(winBottom>wallBottom) addBox(w,winBottom-wallBottom,windowW,x,(wallBottom+winBottom)/2,z,wallCol);
+    const glass=new THREE.Mesh(new THREE.PlaneGeometry(windowW,windowH),
+      new THREE.MeshBasicMaterial({color:0xaaddff,transparent:true,opacity:.25,side:THREE.DoubleSide}));
+    glass.rotation.y=Math.PI/2;
+    glass.position.set(x,windowY,z);
+    addS(glass);
+  }
+}
+
+// 屋根付きの建物（壁＋床＋屋根、内部に入って2階に上がれる）。窓付きで、窓から撃ち合える。
 function addBuildingShell(cx,cz,w,d,wallH,wallCol,roofCol,doorSide){
   const wt=0.3; // 壁の厚さ
-  // 4枚の壁（ドア側は開口部を空ける）
   const halfW=w/2, halfD=d/2;
   const doorW=2.2;
+  const winW=1.6, winH=1.1, winY=wallH*0.55; // 窓のサイズと高さ（胸〜頭の高さ）
+
   // North wall (-Z側)
-  if(doorSide!=='north'){addBox(w,wallH,wt,cx,wallH/2,cz-halfD,wallCol);}
-  else{
+  if(doorSide==='north'){
     addBox((w-doorW)/2,wallH,wt,cx-(w+doorW)/4,wallH/2,cz-halfD,wallCol);
     addBox((w-doorW)/2,wallH,wt,cx+(w+doorW)/4,wallH/2,cz-halfD,wallCol);
+  } else {
+    addWindowedWall(w,wallH,wt,cx,wallH/2,cz-halfD,wallCol,'x',winW,winH,winY);
   }
   // South wall (+Z側)
-  if(doorSide!=='south'){addBox(w,wallH,wt,cx,wallH/2,cz+halfD,wallCol);}
-  else{
+  if(doorSide==='south'){
     addBox((w-doorW)/2,wallH,wt,cx-(w+doorW)/4,wallH/2,cz+halfD,wallCol);
     addBox((w-doorW)/2,wallH,wt,cx+(w+doorW)/4,wallH/2,cz+halfD,wallCol);
+  } else {
+    addWindowedWall(w,wallH,wt,cx,wallH/2,cz+halfD,wallCol,'x',winW,winH,winY);
   }
   // West wall (-X側)
-  if(doorSide!=='west'){addBox(wt,wallH,d,cx-halfW,wallH/2,cz,wallCol);}
-  else{
+  if(doorSide==='west'){
     addBox(wt,wallH,(d-doorW)/2,cx-halfW,wallH/2,cz-(d+doorW)/4,wallCol);
     addBox(wt,wallH,(d-doorW)/2,cx-halfW,wallH/2,cz+(d+doorW)/4,wallCol);
+  } else {
+    addWindowedWall(wt,wallH,d,cx-halfW,wallH/2,cz,wallCol,'z',winW,winH,winY);
   }
   // East wall (+X側)
-  if(doorSide!=='east'){addBox(wt,wallH,d,cx+halfW,wallH/2,cz,wallCol);}
-  else{
+  if(doorSide==='east'){
     addBox(wt,wallH,(d-doorW)/2,cx+halfW,wallH/2,cz-(d+doorW)/4,wallCol);
     addBox(wt,wallH,(d-doorW)/2,cx+halfW,wallH/2,cz+(d+doorW)/4,wallCol);
+  } else {
+    addWindowedWall(wt,wallH,d,cx+halfW,wallH/2,cz,wallCol,'z',winW,winH,winY);
   }
+
   // 屋根（登れる床として登録）
   const roof=new THREE.Mesh(new THREE.BoxGeometry(w+0.4,0.3,d+0.4),new THREE.MeshLambertMaterial({color:roofCol}));
   roof.position.set(cx,wallH+0.15,cz);roof.castShadow=roof.receiveShadow=true;
@@ -1108,10 +1156,10 @@ function tryShoot(){
     ray.set(camera.position,fwdV);
 
     if(w.melee){
-      // Knife: just range check against all remotes
+      // Knife: 距離チェック + 壁に遮られていないかのチェック（壁越し攻撃を防止、軽量版）
       Object.values(remotes).filter(r=>r.alive&&r.mesh).forEach(r=>{
         const dist=camera.position.distanceTo(r.mesh.position);
-        if(dist<w.range){
+        if(dist<w.range&&!isBlockedByWall(camera.position,r.mesh.position)){
           sendToPlayer(r.pid,{type:'hit',damage:w.damage,killerIndex:myIndex});
           showHitMarker();spawnFX(r.mesh.position.clone().setY(1),0xffaa00,8);
         }
@@ -1263,6 +1311,24 @@ function addKillFeed(msg){const el=document.getElementById('kfeed');const d=docu
 // ══════════════════════════════════
 const PR=.38,pBox=new THREE.Box3();
 const STEP_TOLERANCE=0.05; // 段差をすり抜けず登れるようにするための許容誤差
+const wallCheckPoint=new THREE.Vector3();
+const tinyBox=new THREE.Box3();
+
+// 2点間に壁(colBoxes)が挟まっているかを軽量にチェックする（ナイフの壁越し攻撃防止用）。
+// 線分上を数点サンプリングして、いずれかの点が壁の中にあれば「遮られている」と判定。
+function isBlockedByWall(from,to){
+  const steps=6; // サンプリング数（多いほど正確だが重い。近接武器なので少なめでOK）
+  for(let i=1;i<steps;i++){
+    const tt=i/steps;
+    wallCheckPoint.lerpVectors(from,to,tt);
+    tinyBox.set(
+      new THREE.Vector3(wallCheckPoint.x-0.02,wallCheckPoint.y-0.02,wallCheckPoint.z-0.02),
+      new THREE.Vector3(wallCheckPoint.x+0.02,wallCheckPoint.y+0.02,wallCheckPoint.z+0.02)
+    );
+    if(colBoxes.some(b=>b.intersectsBox(tinyBox))) return true;
+  }
+  return false;
+}
 
 function moveSelf(dx,dz){
   // XZ移動：壁(colBoxes)との衝突判定。プレイヤーの足元〜頭の範囲で判定するが、
@@ -1280,9 +1346,21 @@ function moveSelf(dx,dz){
   if(colBoxes.some(b=>b.intersectsBox(pBox)))me.z-=dz;
 }
 
-// 段差（階段の1段など）を自動で登れるかチェックする。
-// 小さい段差なら、その場で足元の高さを引き上げる（horizontal stepping）。
-function findGroundAt(feetY){
+// 自分の真下（現在のXZ位置）にある床面のうち、最も高いものを返す（落下中の着地判定用）。
+// 段差を「登れるか」の判定はここでは行わない＝高所から飛び降りた時に正しく自由落下させるため。
+function findGroundDirectlyBelow(){
+  let best=0; // デフォルトは地面
+  for(const f of floorSurfaces){
+    if(me.x>=f.minX&&me.x<=f.maxX&&me.z>=f.minZ&&me.z<=f.maxZ){
+      if(f.topY>best) best=f.topY;
+    }
+  }
+  return best;
+}
+
+// 段差を自動で登れるかチェックする（地上を歩いている時のみ使用：階段の1段など小さい段差用）。
+// onGroundの時だけ呼ばれるため、ジャンプ・落下中の挙動には影響しない。
+function findSteppableGroundAt(feetY){
   let best=-Infinity;
   for(const f of floorSurfaces){
     if(me.x>=f.minX&&me.x<=f.maxX&&me.z>=f.minZ&&me.z<=f.maxZ){
@@ -1356,21 +1434,31 @@ function tick(dt){
 
     // Gravity & jump — 複数階層の床面に対応した重力処理
     me.velY+=GRAVITY*dt;
-    const prevY=me.y;
     me.y+=me.velY*dt;
     const crouchOffset=me.crouching?(STAND_H-CROUCH_H):0;
     const feetY=me.y-STAND_H+crouchOffset; // 現在の足元の高さ（しゃがみ考慮）
 
     if(me.velY<=0){
-      // 落下中 or 静止中：自分の真下にある最も高い床を探して、それより低く沈まないようにする
-      const groundTopY=findGroundAt(feetY);
-      if(feetY<=groundTopY+STEP_TOLERANCE){
-        // 着地 or 段差を登る
-        me.y=groundTopY+STAND_H-crouchOffset;
-        me.velY=0;
-        me.onGround=true;
+      if(me.onGround){
+        // 地上を歩いている時：階段の1段など小さい段差(0.5m以内)なら自動で登る
+        const steppable=findSteppableGroundAt(feetY);
+        if(feetY<=steppable+STEP_TOLERANCE){
+          me.y=steppable+STAND_H-crouchOffset;
+          me.velY=0;
+          me.onGround=true;
+        } else {
+          // 段差判定の範囲を超えて下に床がない＝崖から落ち始めた
+          me.onGround=false;
+        }
       } else {
-        me.onGround=false;
+        // 空中にいる時（ジャンプ中・落下中）：自分の真下にある床にぶつかったら着地。
+        // 段差登りの0.5m許容は適用しない＝高所から正しく自由落下できる。
+        const groundBelow=findGroundDirectlyBelow();
+        if(feetY<=groundBelow){
+          me.y=groundBelow+STAND_H-crouchOffset;
+          me.velY=0;
+          me.onGround=true;
+        }
       }
     } else {
       // 上昇中（ジャンプ中）：頭上に天井がないか簡易チェックはせず素通り（軽量化のため省略）
