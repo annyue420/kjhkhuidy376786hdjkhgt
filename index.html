@@ -184,7 +184,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
 <div id="ping">PING --ms</div>
 <div id="crouch-ind">CROUCHING</div>
 
-<!-- HUD -->
 <div id="hud">
   <div class="score-wrap">
     <div class="score-kills" id="score-display">0 : 0</div>
@@ -212,7 +211,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
   <div class="kfeed" id="kfeed"></div>
 </div>
 
-<!-- Touch Controls -->
 <div id="joy-zone"><div id="joy-base"><div id="joy-knob"></div></div></div>
 <div id="look-zone"></div>
 <div id="fire-btn">🔥</div>
@@ -222,27 +220,23 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
 <div id="crouch-btn">⬇</div>
 <div id="scope-btn">🔍</div>
 
-<!-- Sniper scope overlay -->
 <div id="scope-overlay">
   <div id="scope-vignette"></div>
   <div id="scope-reticle"></div>
   <div id="scope-dot"></div>
 </div>
 
-<!-- Respawn -->
 <div id="respawn-msg">
   <p>RESPAWN IN</p>
   <div id="respawn-num">4</div>
   <div id="lives-remaining"></div>
 </div>
 
-<!-- LOBBY -->
 <div id="lobby">
   <div id="lobby-inner">
     <h1>SPLIT FIRE</h1>
     <div class="sub">ONLINE 1〜4P · PC &amp; MOBILE</div>
 
-    <!-- Avatar -->
     <div class="lsec">
       <h3>YOUR PROFILE</h3>
       <div class="avatar-section">
@@ -255,7 +249,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
       </div>
     </div>
 
-    <!-- Stage -->
     <div class="lsec">
       <h3>STAGE</h3>
       <div id="stage-row">
@@ -265,7 +258,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
       </div>
     </div>
 
-    <!-- Settings -->
     <div class="lsec">
       <h3>SETTINGS</h3>
       <div class="setting-row">
@@ -282,7 +274,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
       </div>
     </div>
 
-    <!-- Connection -->
     <div class="lsec">
       <h3>CONNECTION（最大4人）</h3>
       <button class="big-btn btn-host" id="host-btn">🖥 HOST GAME（部屋を作る）</button>
@@ -304,13 +295,11 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
   </div>
 </div>
 
-<!-- Pause -->
 <div id="pause-overlay">
   <h2>⏸ PAUSED</h2>
   <button class="ov-btn" id="resume-btn">▶ RESUME</button>
   <button class="ov-btn" onclick="location.reload()">↩ QUIT</button>
 </div>
-<!-- Game Over -->
 <div id="gameover-overlay">
   <h2 id="go-title">GAME OVER</h2>
   <div id="final-scores"></div>
@@ -318,7 +307,6 @@ canvas#c{display:block;width:100vw;height:100vh;touch-action:none;}
   <button class="ov-btn" id="rematch-btn" style="background:linear-gradient(135deg,#22aa44,#44cc66);border:none;">🔄 もう一度プレイ（同じ部屋）</button>
   <button class="ov-btn" onclick="location.reload()">↩ タイトルへ戻る</button>
 </div>
-<!-- Connection Lost -->
 <div id="conn-lost">
   <h2>⚠ 接続が切れました</h2>
   <p>相手のブラウザが閉じられました。</p>
@@ -904,7 +892,8 @@ function onData(d,fromPid){
       break;
     case 'state':
       if(remotes[fromPid]){const r=remotes[fromPid];r.x=d.x;r.z=d.z;r.y=d.y;r.yaw=d.yaw;r.hp=d.hp;r.alive=d.alive;r.kills=d.kills;r.deaths=d.deaths;r.crouching=d.crouching;if(r.mesh){r.mesh.position.set(r.x,0,r.z);r.mesh.rotation.y=r.yaw;r.mesh.visible=r.alive;r.mesh.scale.y=d.crouching?.6:1;}}
-      if(isHost)broadcast({...d,fromIndex:remotes[fromPid]?.index},fromPid);
+      // 【修正箇所】ゲストから届いた位置情報を他のゲストへ中継する際、typeを'relay'にして送る
+      if(isHost)broadcast({...d, type:'relay', fromIndex:remotes[fromPid]?.index},fromPid);
       updateScoreUI();break;
     case 'relay':
       const rr=remoteByIndex[d.fromIndex];if(rr&&rr.pid!==fromPid){rr.x=d.x;rr.z=d.z;rr.y=d.y;rr.yaw=d.yaw;rr.hp=d.hp;rr.alive=d.alive;rr.kills=d.kills;rr.deaths=d.deaths;rr.crouching=d.crouching;if(rr.mesh){rr.mesh.position.set(rr.x,0,rr.z);rr.mesh.rotation.y=rr.yaw;rr.mesh.visible=rr.alive;rr.mesh.scale.y=d.crouching?.6:1;}}
@@ -1408,7 +1397,15 @@ function tick(dt){
   currentGunModel.position.y=-.17+Math.sin(t*(mv?7:2))*(mv?.01:.003);
 
   // Update remote meshes
-  Object.values(remotes).forEach(r=>{if(r.mesh){r.mesh.position.set(r.x,0,r.z);r.mesh.rotation.y=r.yaw;r.mesh.visible=r.alive;}});
+  Object.values(remotes).forEach(r => {
+    if (r.mesh) {
+      // 補間処理（なめらかな移動）
+      r.mesh.position.lerp(new THREE.Vector3(r.x, 0, r.z), 0.3);
+      // 回転の同期
+      r.mesh.rotation.y = r.yaw;
+      r.mesh.visible = r.alive;
+    }
+  });
 
   // Hit marker
   if(hmTimer>0){hmTimer-=dt;if(hmTimer<=0)document.getElementById('hitmark').classList.remove('active');}
@@ -1434,14 +1431,26 @@ function tick(dt){
   if(sendTimer>=1/TICK){
     sendTimer=0;
     const stateMsg={type:'state',x:me.x,z:me.z,y:me.y,yaw:me.yaw,hp:me.hp,alive:me.alive,kills:me.kills,deaths:me.deaths,crouching:me.crouching};
-    if(isHost){Object.keys(conns).forEach(pid=>{const r=Object.values(remotes).find(r=>r.pid===pid);sendTo(pid,stateMsg);Object.values(remotes).filter(r=>r.pid!==pid).forEach(r=>{sendTo(pid,{type:'relay',fromIndex:r.index,x:r.x,z:r.z,y:r.y,yaw:r.yaw,hp:r.hp,alive:r.alive,kills:r.kills,deaths:r.deaths,crouching:r.crouching});});});}
-    else{broadcast(stateMsg);}
+    // ホストは全ゲストへ、ゲストはホストへ自分の状態を送信
+    if(isHost){
+      Object.keys(conns).forEach(pid => {
+        sendTo(pid, stateMsg);
+      });
+    } else {
+      broadcast(stateMsg);
+    }
   }
 }
 
-function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(gameStarted)tick(dt);renderer.render(scene,camera);}
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.04);
+  if(gameStarted) tick(dt);
+  renderer.render(scene,camera);
+}
 
-initPeer(makeShortId());animate();
+initPeer(makeShortId());
+animate();
 </script>
 </body>
 </html>
